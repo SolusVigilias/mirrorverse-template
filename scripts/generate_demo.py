@@ -11,7 +11,7 @@ random.seed(SEED)
 
 Path("out").mkdir(exist_ok=True)
 
-# fake trajectory
+# fake  trajectory
 with open("out/tracks.ndjson", "w") as f:
     for t in range(120):
         point = {

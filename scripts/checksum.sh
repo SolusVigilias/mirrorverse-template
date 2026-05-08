@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-sha256sum out/final.mp4 | awk '{print $1}' > out/final.mp4.sha256
+python - <<'PY'
+import json
+import hashlib
 
-jq \
-  --arg sha "$(cat out/final.mp4.sha256)" \
-  '.artifacts[0].sha256=$sha' \
-  out/provenance.json \
-  > out/provenance-with-sha.json
+with open("out/final.mp4", "rb") as f:
+    sha = hashlib.sha256(f.read()).hexdigest()
 
-echo "checksums updated"
+with open("out/final.mp4.sha256", "w") as f:
+    f.write(sha)
+
+with open("out/provenance.json") as f:
+    prov = json.load(f)
+
+prov["artifacts"][0]["sha256"] = sha
+
+with open("out/provenance-with-sha.json", "w") as f:
+    json.dump(prov, f, indent=2)
+
+print("checksums updated")
+PY

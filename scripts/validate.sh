@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-test -f out/provenance-with-sha.json
+python - <<'PY'
+import json
+import hashlib
+import sys
 
-jq '
-has("schema_version")
-and has("run_id")
-and has("seed")
-and has("artifacts")
-' out/provenance-with-sha.json
+with open("out/provenance-with-sha.json") as f:
+    prov = json.load(f)
 
-echo "schema validation ok"
+expected = prov["artifacts"][0]["sha256"]
 
-EXPECTED=$(jq -r '.artifacts[0].sha256' out/provenance-with-sha.json)
-ACTUAL=$(sha256sum out/final.mp4 | awk '{print $1}')
+with open("out/final.mp4", "rb") as f:
+    actual = hashlib.sha256(f.read()).hexdigest()
 
-if [ "$EXPECTED" != "$ACTUAL" ]; then
-  echo "checksum mismatch"
-  exit 1
-fi
+if expected != actual:
+    print("checksum mismatch")
+    sys.exit(1)
 
-echo "checksum validation ok"
+print("validation ok")
+PY

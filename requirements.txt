@@ -1,7 +1,2 @@
 
----
-
-# requirements.txt
-
-```txt
 numpy

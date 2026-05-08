@@ -1,0 +1,31 @@
+name: Smoke
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - run: pip install -r requirements.txt
+
+    - run: python scripts/generate_demo.py
+
+    - run: sudo apt-get update && sudo apt-get install -y jq
+
+    - run: bash scripts/checksum.sh
+
+    - run: bash scripts/validate.sh
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mirrorverse-artifacts
+        path: out/

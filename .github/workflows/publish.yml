@@ -1,0 +1,32 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: mirrorverse-artifacts
+        path: out/
+
+    - run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          latexmk \
+          texlive-latex-recommended \
+          texlive-latex-extra
+
+    - run: |
+        export SOURCE_DATE_EPOCH=1650000000
+        latexmk -pdf -quiet -output-directory=publish publish/paper.tex
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mirrorverse-publish
+        path: publish/

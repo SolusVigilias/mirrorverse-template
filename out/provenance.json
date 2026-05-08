@@ -1,0 +1,18 @@
+{
+  "schema_version": "mirrorverse-v1",
+  "run_id": "c045b17b-ba25-4934-a211-dcf0b9840170",
+  "timestamp": "2026-05-08T09:34:48.075755+00:00",
+  "seed": 12345,
+  "kernel": "Windows-10-10.0.19045-SP0",
+  "container": "ghcr.io/your-org/mirrorverse-smoke-ci:2026-05-06",
+  "chrome_revision": "1140000",
+  "frames": 120,
+  "fps": 30,
+  "artifacts": [
+    {
+      "path": "out/final.mp4",
+      "sha256": null
+    }
+  ],
+  "tracks": "out/tracks.ndjson"
+}

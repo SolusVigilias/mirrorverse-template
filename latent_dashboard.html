@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Latent Diagnostic Dashboard</title>
+
+<style>
+body{
+  margin:0;
+  background:#111;
+  color:#eee;
+  font-family:sans-serif;
+}
+
+#layout{
+  display:grid;
+  grid-template-columns: 420px 1fr;
+  height:100vh;
+}
+
+#left{
+  border-right:1px solid #333;
+  padding:12px;
+}
+
+#right{
+  padding:12px;
+}
+
+canvas{
+  background:#000;
+  border:1px solid #333;
+}
+
+.panel{
+  margin-bottom:16px;
+}
+
+.label{
+  margin-bottom:6px;
+  color:#aaa;
+}
+
+#frameImg{
+  width:384px;
+  image-rendering:pixelated;
+}
+
+#slider{
+  width:100%;
+}
+</style>
+</head>
+
+<body>
+
+<div id="layout">
+
+<div id="left">
+
+  <div class="panel">
+    <div class="label">Current Frame</div>
+    <img id="frameImg">
+  </div>
+
+  <div class="panel">
+    <div class="label">Frame</div>
+    <input id="slider" type="range" min="0" max="0" value="0">
+  </div>
+
+  <div id="stats"></div>
+
+</div>
+
+<div id="right">
+
+  <div class="panel">
+    <div class="label">Latent Plane</div>
+    <canvas id="latentCanvas" width="700" height="420"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="label">Hamming Drift</div>
+    <canvas id="hamCanvas" width="700" height="140"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="label">Defect Count</div>
+    <canvas id="defCanvas" width="700" height="140"></canvas>
+  </div>
+
+</div>
+
+</div>
+
+<script>
+
+const latentCanvas = document.getElementById("latentCanvas");
+const hamCanvas    = document.getElementById("hamCanvas");
+const defCanvas    = document.getElementById("defCanvas");
+
+const lctx = latentCanvas.getContext("2d");
+const hctx = hamCanvas.getContext("2d");
+const dctx = defCanvas.getContext("2d");
+
+const slider = document.getElementById("slider");
+const frameImg = document.getElementById("frameImg");
+const stats = document.getElementById("stats");
+
+let latent = null;
+let current = 0;
+
+fetch("out/latent.json")
+.then(r => r.json())
+.then(data => {
+
+  latent = data;
+
+  slider.max = latent.frames.length - 1;
+
+  render();
+});
+
+slider.addEventListener("input", () => {
+  current = Number(slider.value);
+  render();
+});
+
+function render(){
+
+  const frames = latent.frames;
+  const f = frames[current];
+
+  frameImg.src = "out/frames/" + f.png;
+  
+  stats.innerHTML = `
+    frame: ${f.i}<br>
+    z1: ${f.z[0].toFixed(3)}<br>
+    z2: ${f.z[1].toFixed(3)}<br>
+    defects: ${f.defects}<br>
+    energy: ${f.energy.toFixed(3)}<br>
+    hamming: ${f.hammingFromPrev}
+  `;
+
+  drawLatent();
+  drawTimeline(
+    hctx,
+    frames.map(f => f.hammingFromPrev || 0),
+    current
+  );
+
+  drawTimeline(
+    dctx,
+    frames.map(f => f.defects),
+    current
+  );
+}
+
+function drawLatent(){
+
+  const W = latentCanvas.width;
+  const H = latentCanvas.height;
+
+  lctx.clearRect(0,0,W,H);
+  lctx.fillStyle = "#111";
+  lctx.fillRect(0,0,W,H);
+
+  const frames = latent.frames;
+
+  const xs = frames.map(f => f.z[0]);
+  const ys = frames.map(f => f.z[1]);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const pad = 40;
+
+  const scaleX = (W - pad * 2) / ((maxX - minX) || 1);
+  const scaleY = (H - pad * 2) / ((maxY - minY) || 1);
+  const scale = Math.min(scaleX, scaleY);
+
+  function project(z){
+    return {
+      x: W / 2 + (z[0] - (minX + maxX) / 2) * scale,
+      y: H / 2 - (z[1] - (minY + maxY) / 2) * scale
+    };
+  }
+
+  // trajectory
+  for(let i=1;i<frames.length;i++){
+
+    const a = project(frames[i-1].z);
+    const b = project(frames[i].z);
+
+    const alpha = i / frames.length;
+
+    lctx.strokeStyle =
+      `rgba(180,180,180,${alpha * 0.5})`;
+
+    lctx.beginPath();
+    lctx.moveTo(a.x,a.y);
+    lctx.lineTo(b.x,b.y);
+    lctx.stroke();
+  }
+
+  // axes
+  lctx.strokeStyle = "#333";
+  lctx.beginPath();
+  lctx.moveTo(W/2,0);
+  lctx.lineTo(W/2,H);
+  lctx.stroke();
+
+  lctx.beginPath();
+  lctx.moveTo(0,H/2);
+  lctx.lineTo(W,H/2);
+  lctx.stroke();
+
+  // points
+  const maxHam = Math.max(
+    ...frames.map(f => f.hammingFromPrev || 0),
+    1
+  );
+
+  frames.forEach((f,i)=>{
+
+    const p = project(f.z);
+
+    const ham = f.hammingFromPrev || 0;
+    const t = ham / maxHam;
+
+    // dark blue -> cyan -> white
+    const r = Math.round(80 + t * 175);
+    const g = Math.round(120 + t * 135);
+    const b = Math.round(180 + t * 75);
+
+    lctx.beginPath();
+
+    lctx.fillStyle =
+      i === current
+        ? "#00ffff"
+        : `rgb(${r},${g},${b})`;
+
+    const radius =
+      i === current
+        ? 6
+        : 3 + t * 3;
+
+    lctx.arc(p.x,p.y,radius,0,Math.PI*2);
+    lctx.fill();
+  });
+}
+function drawTimeline(ctx, values, current){
+
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0,0,W,H);
+
+  const maxV = Math.max(...values,1);
+
+  ctx.strokeStyle = "#aaa";
+
+  ctx.beginPath();
+
+  values.forEach((v,i)=>{
+
+    const x = i / (values.length-1) * W;
+    const y = H - (v/maxV) * (H-10);
+
+    if(i===0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+
+  ctx.stroke();
+
+  // current marker
+  const cx = current / (values.length-1) * W;
+
+  ctx.strokeStyle = "#0ff";
+
+  ctx.beginPath();
+  ctx.moveTo(cx,0);
+  ctx.lineTo(cx,H);
+  ctx.stroke();
+}
+
+</script>
+
+</body>
+</html>

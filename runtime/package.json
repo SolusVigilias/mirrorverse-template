@@ -1,0 +1,11 @@
+{
+  "name": "tiny-triage",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "minimist": "^1.2.8",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.33.2"
+  }
+}

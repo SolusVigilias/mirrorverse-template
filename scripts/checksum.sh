@@ -11,12 +11,12 @@ with open("out/final.mp4", "rb") as f:
 with open("out/final.mp4.sha256", "w") as f:
     f.write(sha)
 
-with open("out/provenance.json") as f:
+with open("provenance/provenance.json") as f:
     prov = json.load(f)
 
 prov["artifacts"][0]["sha256"] = sha
 
-with open("out/provenance-with-sha.json", "w") as f:
+with open("provenance/provenance-with-sha.json", "w") as f:
     json.dump(prov, f, indent=2)
 
 print("checksums updated")

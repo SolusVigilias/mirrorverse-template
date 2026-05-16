@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Triage One‑Pager</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#111822; --muted:#8aa0b3; --text:#e8f0f6;
+    --hi:#1f2a38; --ok:#1e7f4a; --warn:#946200; --bad:#9a2a2a; --accent:#2b8cff;
+    --chip:#172231; --tile:#0f1620; --grid:#1b2532; --btn:#17263a; --btnh:#1e3552;
+  }
+  html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Noto Sans CJK SC", sans-serif}
+  header{display:flex;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid #1c2634;background:linear-gradient(180deg,#0c1219,#0b0f14)}
+  h1{font-size:16px;margin:0 8px 0 0;letter-spacing:.3px}
+  .hint{color:var(--muted)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;padding:12px}
+  .col{flex:1 1 420px;min-width:360px}
+  .card{background:var(--panel);border:1px solid #1b2736;border-radius:10px;overflow:hidden}
+  .card header{background:var(--hi);border-bottom:1px solid #223144;padding:10px 12px}
+  .card header h2{font-size:13px;margin:0}
+  .pad{padding:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--chip);border:1px solid #223144;border-radius:999px;padding:5px 10px;display:inline-flex;gap:8px;align-items:center}
+  .pri{font-weight:600;border-radius:6px;padding:2px 6px}
+  .pri.p1{background:#172b1f;border:1px solid #214d33;color:#86f3b3}
+  .pri.p2{background:#2a2716;border:1px solid #665312;color:#ffd36f}
+  .pri.p3{background:#2b1919;border:1px solid #6b2e2e;color:#ff9c9c}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .thumb{background:var(--tile);border:1px solid #223144;border-radius:8px;overflow:hidden}
+  .thumb img{display:block;width:100%;height:90px;object-fit:cover;background:#0a0e13}
+  .thumb .meta{padding:8px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 10px;font-size:13px}
+  .kv div:nth-child(odd){color:#a9bece}
+  .heat{display:grid;gap:2px;grid-template-columns:repeat(16,1fr);background:var(--grid);padding:8px;border-radius:8px}
+  .tile{position:relative;width:100%;padding-bottom:100%;border-radius:3px}
+  .tile::after{content:attr(data-i);position:absolute;bottom:2px;right:4px;font-size:9px;color:#0008}
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  button,a.btn{background:var(--btn);border:1px solid #2a3a52;color:var(--text);padding:8px 10px;border-radius:8px;cursor:pointer}
+  button:hover,a.btn:hover{background:var(--btnh)}
+  input[type=file]{display:none}
+  .filepick{display:inline-flex;gap:8px;align-items:center}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+  .sep{height:1px;background:#1b2635;margin:10px 0}
+  .badge{padding:2px 6px;border-radius:6px;border:1px solid #2a3a52;background:#142033;color:#a9c9ff}
+  .tileGrid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:4px;
+    margin-top:10px;
+  }
+  .tileCell{
+    height:26px;
+    border-radius:4px;
+    background:#1b2635;
+    border:1px solid #2b3a4c;
+    font-size:10px;
+    color:#9fb0c0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .tileCell.changed{
+    background:#7a2630;
+    border-color:#ff6b7a;
+    color:white;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Triage One‑Pager</h1>
+    <label class="filepick btn">
+      <input id="file" type="file" accept=".json,application/json" />
+      <span class="badge">选择/拖拽 JSON</span>
+    </label>
+    <span class="hint">支持 <span class="mono">triage.json</span> 或 <span class="mono">provenance-with-sha.json</span>；可直接本地 <span class="mono">file://</span> 打开。</span>
+    <span id="loadinfo" class="hint"></span>
+  </header>
+
+  <div class="row">
+    <section class="col card" id="top3Card">
+      <header><h2>Top‑3 可能原因</h2></header>
+      <div class="pad" id="top3"></div>
+    </section>
+
+    <section class="col card">
+      <header><h2>适配器 / 驱动差异</h2></header>
+      <div class="pad">
+        <div class="kv" id="envdiffs"></div>
+        <div class="sep"></div>
+        <div class="actions">
+          <button id="actRerun">🔁 重跑该单元</button>
+          <button id="actIsolate">🧪 SwiftShader/Dawn CPU 隔离</button>
+          <button id="actLUT">📥 下载 LUT</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="col card">
+      <header><h2>逐帧热力（点击可定位）</h2></header>
+      <div class="pad">
+        <div id="heatwrap" class="heat"></div>
+      </div>
+    </section>
+
+    <section class="col card">
+      <header><h2>缩略图（内嵌 Base64）</h2></header>
+      <div class="pad">
+        <div class="grid" id="thumbs"></div>
+      </div>
+    </section>
+
+    <section class="col card">
+      <header><h2>工件与溯源</h2></header>
+      <div class="pad" id="artifacts"></div>
+    </section>
+  </div>
+
+<script>
+/* ---------- 轻量工具 ---------- */
+const $ = (sel, el=document)=>el.querySelector(sel);
+const $$ = (sel, el=document)=>Array.from(el.querySelectorAll(sel));
+const el = (tag, props={}) => Object.assign(document.createElement(tag), props);
+const fmtPct = x => (x*100).toFixed(1)+'%';
+const by = k => (a,b)=> (a[k]===b[k]?0:(a[k]>b[k]?1:-1));
+
+/* ---------- 主入口：读取文件 ---------- */
+const fileInput = $('#file');
+const loadInfo = $('#loadinfo');
+const heatWrap = $('#heatwrap');
+const top3Box = $('#top3');
+const envBox = $('#envdiffs');
+const thumbsBox = $('#thumbs');
+const artifactsBox = $('#artifacts');
+
+let globalState = {
+  frames: [],
+  probs: [],
+  causes: [],
+  thumbs: [],
+  env: { adapterA:null, adapterB:null, driverA:null, driverB:null },
+  artifacts: [],
+  ciLinks: [],
+  lutHref: null,
+  sha: null
+};
+
+window.addEventListener('dragover', e=>{ e.preventDefault(); });
+window.addEventListener('drop', e=>{
+  e.preventDefault();
+  if(e.dataTransfer.files?.[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{
+  const f = e.target.files?.[0];
+  if(f) loadFile(f);
+});
+
+function loadFile(file){
+  const reader = new FileReader();
+  reader.onload = ()=> {
+    try{
+      const json = JSON.parse(reader.result);
+      loadInfo.textContent = `已载入：${file.name}`;
+      parseJson(json);
+      renderAll();
+    }catch(err){
+      alert('JSON 解析失败：'+err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- 解析不同结构 ---------- */
+function parseJson(j){
+  // 兼容 triage.json 或 provenance-with-sha.json；做尽力推断
+  const s = globalState = {
+    frames: [], probs: [], causes: [], thumbs: [], env:{}, artifacts:[], ciLinks:[], lutHref:null, sha:null
+  };
+
+  // 1) 概率与原因
+  const candidates = j.causes || j.root_causes || j.top_causes || [];
+  s.causes = candidates.map((c,i)=>({
+    id: c.id || c.key || ('cause_'+i),
+    label: c.label || c.name || ('原因 '+(i+1)),
+    prob: c.probability ?? c.score ?? 0,
+    priority: i===0?1:(i===1?2:3),
+    note: c.note || c.reason || ''
+  })).sort((a,b)=>b.prob-a.prob).slice(0,3);
+  s.probs = s.causes.map(c=>c.prob);
+
+  // 2) 帧与热力/缩略图
+  let frames =
+    j.frames ??
+    j.per_frame ??
+    j.samples ??
+    [];
+
+  // object -> array
+  if (!Array.isArray(frames) && typeof frames === 'object') {
+    frames = Object.entries(frames).map(([k,v]) => ({
+      __key:k,
+      ...v
+    }));
+  }
+
+  // null / invalid
+  if (!Array.isArray(frames)) {
+    frames = [];
+  }
+
+  frames.forEach((f,i)=>{
+    s.frames.push({
+      i,
+      heat: f.heat || f.score || f.hammingFromPrev || Math.random()*0.3,
+      link: f.link || f.url || null,
+
+      thumb: f.thumb_b64 || f.thumbnail || f.thumb || null,
+
+      phash64: f.phash64 || null,
+      hammingFromPrev: f.hammingFromPrev || null,
+      sha256: f.sha256 || null,
+
+      tiles: f.tiles || {},
+
+      meta: f.meta || {},
+      key: f.__key || null
+    });
+
+    if (f.thumb_b64 || f.thumbnail || f.thumb) {
+      s.thumbs.push({
+        i,
+        b64: f.thumb_b64 || f.thumbnail || f.thumb
+      });
+    }
+  });
+  // 3) 适配器/驱动差异
+  const env = j.env || j.environment || {};
+  const a = env.adapterA || env.adapter_ref || env.adapter || {};
+  const b = env.adapterB || env.adapter_exp || env.adapter_alt || {};
+  s.env.adapterA = a.name || a.adapter || a.gpu || null;
+  s.env.adapterB = b.name || b.adapter || b.gpu || null;
+  s.env.driverA = a.driver || a.version || null;
+  s.env.driverB = b.driver || b.version || null;
+
+  // 4) 工件/CI 链接
+  const arts = j.artifacts || j.outputs || [];
+  s.artifacts = arts.map(x=>({
+    name: x.name || 'artifact',
+    href: x.href || x.url || null,
+    size: x.size || null
+  }));
+  s.ciLinks = (j.ci_links || j.links || []).map(x=> x.url || x.href).filter(Boolean);
+
+  // 5) LUT / SHA
+  s.lutHref = j.lut || j.lut_url || null;
+  s.sha = j.sha256 || j.sha || (j.provenance?.sha256) || null;
+
+  // 6) 若缩略图缺失，尝试从 artifacts 推断（小图 base64）
+  if (!s.thumbs.length && j.thumbnails_b64) {
+    s.thumbs = j.thumbnails_b64.map((b64,i)=>({i, b64}));
+  }
+}
+
+/* ---------- 渲染 ---------- */
+function renderAll(){
+  renderTop3();
+  renderEnv();
+  renderHeat();
+  renderThumbs();
+  renderArtifacts();
+}
+
+function renderTop3(){
+  top3Box.innerHTML = '';
+  if(!globalState.causes.length){
+    top3Box.innerHTML = '<div class="hint">未找到原因条目。</div>'; return;
+  }
+  const wrap = el('div',{className:'chips'});
+  globalState.causes.forEach((c,idx)=>{
+    const chip = el('div',{className:'chip'});
+    const pri = el('span',{className:'pri p'+(idx+1), textContent:'P'+(idx+1)});
+    const label = el('span',{textContent:c.label});
+    const prob = el('span',{className:'badge', textContent:fmtPct(c.prob ?? 0)});
+    chip.append(pri,label,prob);
+    if(c.note){
+      const note = el('span',{className:'hint', textContent:' — '+c.note});
+      chip.append(note);
+    }
+    wrap.append(chip);
+  });
+  top3Box.append(wrap);
+}
+
+function renderEnv(){
+  const e = globalState.env;
+  envBox.innerHTML = '';
+  const rows = [
+    ['适配器 A', e.adapterA || '—'],
+    ['适配器 B', e.adapterB || '—'],
+    ['驱动 A', e.driverA || '—'],
+    ['驱动 B', e.driverB || '—'],
+    ['SHA256', globalState.sha || '—']
+  ];
+  rows.forEach(([k,v])=>{
+    envBox.append(el('div',{textContent:k}));
+    envBox.append(el('div',{className:'mono', textContent:v}));
+  });
+  // 绑定动作（这里只生成可点击回调；真实系统可替换为 CI 链接）
+  $('#actRerun').onclick = ()=> actionToast('已触发：重跑该单元（占位回调）');
+  $('#actIsolate').onclick = ()=> actionToast('已触发：SwiftShader/Dawn CPU 隔离（占位回调）');
+  $('#actLUT').onclick = ()=> {
+    if(globalState.lutHref){ window.open(globalState.lutHref,'_blank'); }
+    else actionToast('未在 JSON 中发现 LUT 链接');
+  };
+}
+
+function renderHeat(){
+  const frames = globalState.frames;
+  heatWrap.innerHTML = '';
+  const n = Math.max(16, Math.min(256, frames.length || 64));
+  // 生成 N 个 tile（若帧不足，用噪声补）
+  for(let i=0;i<n;i++){
+    const f = frames[i] || {heat: Math.random()*0.5};
+    const v = clamp01(f.heat);
+    const col = heatColor(v);
+    const t = el('div',{className:'tile', title:`#${i}  score=${(v).toFixed(3)}`});
+    t.dataset.i = i;
+    t.style.background = col;
+    t.onclick = ()=> highlightThumb(i);
+    heatWrap.append(t);
+  }
+}
+
+function renderThumbs(){
+  thumbsBox.innerHTML = '';
+  const thumbs = globalState.thumbs.slice(0,32);
+  if(!thumbs.length){
+    thumbsBox.innerHTML = '<div class="hint">未找到内嵌缩略图（base64）。</div>'; return;
+  }
+  thumbs.forEach(t=>{
+    const card = el('div',{className:'thumb'});
+    const img = el('img',{src: toDataUrl(t.b64)});
+    const meta = el('div',{className:'meta'});
+    const left = el('span',{textContent:`#${t.i}`});
+    const right = el('span',{textContent:`点击热力↑可定位`});
+    meta.append(left,right);
+    card.append(img,meta);
+    thumbsBox.append(card);
+  });
+}
+
+function renderArtifacts(){
+  artifactsBox.innerHTML = '';
+  const wrap = el('div',{className:'kv'});
+  const list = (globalState.artifacts||[]).slice(0,20);
+  if(!list.length && !globalState.ciLinks.length){
+    artifactsBox.innerHTML = '<div class="hint">无工件/CI 链接。</div>'; return;
+  }
+  list.forEach(a=>{
+    wrap.append(el('div',{textContent:a.name}));
+    const link = a.href ? el('a',{href:a.href, target:'_blank', className:'btn', textContent:'打开'}) : el('span',{className:'hint', textContent:'—'});
+    wrap.append(link);
+  });
+  artifactsBox.append(wrap);
+  if(globalState.ciLinks.length){
+    artifactsBox.append(el('div',{className:'sep'}));
+    const chips = el('div',{className:'chips'});
+    globalState.ciLinks.forEach(u=>{
+      const x = el('a',{href:u,target:'_blank',className:'chip',textContent:'CI Artifact'});
+      chips.append(x);
+    });
+    artifactsBox.append(chips);
+  }
+}
+
+/* ---------- 小工具：颜色与导航 ---------- */
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function heatColor(v){
+  // 低→高：蓝→紫→粉→橙→黄（避免指定过多色名，直接用渐变混合）
+  const stops = [
+    [0.00, [20,60,120]],
+    [0.25, [74,35,134]],
+    [0.50, [160,60,160]],
+    [0.75, [210,110,40]],
+    [1.00, [255,210,60]]
+  ];
+  const c = lerpStops(stops, v);
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+function lerpStops(stops, t){
+  for(let i=1;i<stops.length;i++){
+    if(t<=stops[i][0]){
+      const [t0,c0]=stops[i-1], [t1,c1]=stops[i];
+      const r = (t - t0)/(t1 - t0);
+      return [
+        Math.round(c0[0]+(c1[0]-c0[0])*r),
+        Math.round(c0[1]+(c1[1]-c0[1])*r),
+        Math.round(c0[2]+(c1[2]-c0[2])*r),
+      ];
+    }
+  }
+  return stops[stops.length-1][1];
+}
+function toDataUrl(b64){
+  // 支持纯 base64 或 dataURL；若是纯 b64，假定 image/png
+  if(/^data:image\//.test(b64)) return b64;
+  return 'data:image/png;base64,'+b64;
+}
+function highlightThumb(i){ 
+  // 简单：滚到大致对应的缩略图
+  const idx = globalState.thumbs.findIndex(t=>t.i==i);
+
+  if(idx>=0){
+    const node = thumbsBox.children[idx];
+    node?.scrollIntoView({behavior:'smooth', block:'center'});
+    node.style.outline = '2px solid var(--accent)';
+    setTimeout(()=> node.style.outline='none', 900);
+  }
+
+  const frameIndex = globalState.frames.findIndex(f => String(f.i) === String(i));
+  const frame = globalState.frames[frameIndex];
+  const prev = frameIndex > 0 ? globalState.frames[frameIndex - 1] : null;
+
+  const tiles = frame?.tiles || {};
+  const prevTiles = prev?.tiles || {};
+
+  const entries = Object.entries(tiles)
+    .filter(([k, v]) => prevTiles[k] && prevTiles[k] !== v)
+    .slice(0, 8);
+
+  const box = document.querySelector('#top3');
+
+  if (box) {
+    const changedKeys = new Set(entries.map(([k]) => k));
+    const allKeys = Object.keys(tiles).sort((a,b)=>{
+      const [ax, ay] = a.split(',').map(Number);
+      const [bx, by] = b.split(',').map(Number);
+      return ay - by || ax - bx;
+    });
+
+    const rows = entries.length
+      ? entries.map(([k, v]) => `
+          <div class="row">
+            <span>tile ${k}</span>
+            <code>${String(prevTiles[k]).slice(0, 8)}… → ${String(v).slice(0, 8)}…</code>
+          </div>
+        `).join('')
+      : '<div class="hint">相对上一帧没有检测到变化 tile。</div>';
+
+    const grid = `
+      <div class="tileGrid">
+        ${allKeys.map(k => `
+          <div class="tileCell ${changedKeys.has(k) ? 'changed' : ''}">
+            ${k}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    box.innerHTML = rows + grid;
+  }
+}
+function actionToast(msg){
+  const t = el('div',{textContent:msg, style:'position:fixed;bottom:16px;left:16px;background:#132033;border:1px solid #294368;padding:10px 12px;border-radius:8px;z-index:9999'});
+  document.body.append(t);
+  setTimeout(()=> t.remove(), 1600);
+}
+
+/* ---------- 小增强：原生 :contains 选择器兼容 ---------- */
+(function(){
+  // 仅用于 highlightThumb 内的模糊匹配
+  const oldQSA = Document.prototype.querySelectorAll;
+  Document.prototype.querySelectorAll = function(sel){
+    if(!sel.includes(':contains')) return oldQSA.call(this, sel);
+    const m = sel.match(/(.*):contains\(["']?(.*?)["']?\)/);
+    if(!m) return oldQSA.call(this, sel);
+    const [_, pre, text] = m;
+    return Array.from(oldQSA.call(this, pre)).filter(n=> (n.textContent||'').includes(text));
+  };
+})();
+
+</script>
+</body>
+</html>

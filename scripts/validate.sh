@@ -6,7 +6,7 @@ import json
 import hashlib
 import sys
 
-with open("out/provenance-with-sha.json") as f:
+with open("provenance/provenance-with-sha.json") as f:
     prov = json.load(f)
 
 expected = prov["artifacts"][0]["sha256"]

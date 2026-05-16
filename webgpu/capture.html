@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0;background:black;">
+<canvas id="c" width="512" height="512"></canvas>
+
+<script type="module">
+const W = 512;
+const H = 512;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+const adapter = await navigator.gpu.requestAdapter();
+const device = await adapter.requestDevice();
+
+const shaderCode = await fetch("../kernels/shader.wgsl").then(r => r.text());
+
+const module = device.createShaderModule({ code: shaderCode });
+const info = await module.getCompilationInfo();
+
+for (const msg of info.messages) {
+  console.log(
+    "[WGSL]",
+    msg.type,
+    "line",
+    msg.lineNum,
+    msg.message
+  );
+}
+const pipeline = device.createComputePipeline({
+  layout: "auto",
+  compute: {
+    module,
+    entryPoint: "main"
+  }
+});
+
+const N = W * H;
+const src = new Float32Array(N);
+const dst = new Float32Array(N);
+const vel = new Uint32Array(N * 2);
+
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) {
+    const dx = (x - W / 2) / W;
+    const dy = (y - H / 2) / H;
+    src[y * W + x] =
+      0.25 * Math.sin(40 * dx)
+      + 0.25 * Math.sin(37 * dy)
+      + 0.12 * Math.random()
+      + 0.8 * Math.exp(-(dx * dx + dy * dy) * 40);
+
+    const vx = -dy * 80 / H;
+    const vy =  dx * 80 / W;
+    vel[(y * W + x) * 2 + 0] = (vx * 65536) | 0;
+    vel[(y * W + x) * 2 + 1] = (vy * 65536) | 0;
+  }
+}
+
+let ping = device.createBuffer({
+  size: src.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+});
+
+let pong = device.createBuffer({
+  size: dst.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+});
+
+const velBuf = device.createBuffer({
+  size: vel.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+});
+
+const paramBuf = device.createBuffer({
+  size: 5 * 4,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const readBuf = device.createBuffer({
+  size: dst.byteLength,
+  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+});
+
+device.queue.writeBuffer(ping, 0, src);
+device.queue.writeBuffer(velBuf, 0, vel);
+
+function makeBindGroup(srcBuf, dstBuf) {
+  return device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: srcBuf } },
+      { binding: 2, resource: { buffer: dstBuf } },
+      { binding: 3, resource: { buffer: paramBuf } }
+    ]
+  });
+}
+
+function drawFloatField(arr) {
+  const img = ctx.createImageData(W, H);
+
+  let minV = Infinity;
+  let maxV = -Infinity;
+
+  for (let i = 0; i < N; i++) {
+    const v = arr[i];
+    if (Number.isFinite(v)) {
+      minV = Math.min(minV, v);
+      maxV = Math.max(maxV, v);
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    const v = Number.isFinite(arr[i]) ? arr[i] : 0;
+
+    // phase rendering: 不要求 v 在 0..1
+    const g = Math.round(127.5 + 127.5 * Math.sin(v * Math.PI * 2));
+
+    img.data[i * 4 + 0] = g;
+    img.data[i * 4 + 1] = g;
+    img.data[i * 4 + 2] = g;
+    img.data[i * 4 + 3] = 255;
+  }
+
+  ctx.putImageData(img, 0, 0);
+
+  if (frame % 5 === 0) {
+    console.log("field range", frame, minV, maxV);
+  }
+}
+
+let frame = 0;
+
+window.renderFrame = async () => {
+  const params = new Uint32Array([
+    W,
+    H,
+    W,
+    frame,
+    Math.round(0.08 * 65536)
+  ]);
+
+  device.queue.writeBuffer(paramBuf, 0, params);
+
+  const bindGroup = makeBindGroup(ping, pong);
+
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.dispatchWorkgroups(Math.ceil(W / 8), Math.ceil(H / 8));
+  pass.end();
+
+  encoder.copyBufferToBuffer(pong, 0, readBuf, 0, dst.byteLength);
+
+  device.queue.submit([encoder.finish()]);
+  await device.queue.onSubmittedWorkDone();
+
+  await readBuf.mapAsync(GPUMapMode.READ);
+  const out = new Float32Array(readBuf.getMappedRange().slice(0));
+  readBuf.unmap();
+
+  drawFloatField(out);
+
+  const tmp = ping;
+  ping = pong;
+  pong = tmp;
+
+  frame++;
+  return frame;
+};
+
+window.webgpuReady = true;
+</script>
+</body>
+</html>

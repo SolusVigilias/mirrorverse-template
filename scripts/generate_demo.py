@@ -12,7 +12,7 @@ random.seed(SEED)
 Path("out").mkdir(exist_ok=True)
 
 # fake  trajectory
-with open("out/tracks.ndjson", "w") as f:
+with open("provenance/tracks.ndjson", "w") as f:
     for t in range(120):
         point = {
             "type": "point",
@@ -47,8 +47,8 @@ provenance = {
             "sha256": None
         }
     ],
-    "tracks": "out/tracks.ndjson"
+    "tracks": "provenance/tracks.ndjson"
 }
 
-with open("out/provenance.json", "w") as f:
+with open("provenance/provenance.json", "w") as f:
     json.dump(provenance, f, indent=2)

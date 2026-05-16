@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "minimist": "^1.2.8",
+    "ml-pca": "^4.1.1",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

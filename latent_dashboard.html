@@ -75,7 +75,15 @@ canvas{
 <div id="right">
 
   <div class="panel">
-    <div class="label">Latent Plane</div>
+    <div class="label">
+      Latent Plane —
+      color by
+      <select id="colorMode">
+        <option value="hamming">hamming</option>
+        <option value="defects">defects</option>
+        <option value="energy">energy</option>
+      </select>
+    </div>
     <canvas id="latentCanvas" width="700" height="420"></canvas>
   </div>
 
@@ -95,6 +103,9 @@ canvas{
 
 <script>
 
+const colorMode = document.getElementById("colorMode");
+
+colorMode.addEventListener("change", render);
 const latentCanvas = document.getElementById("latentCanvas");
 const hamCanvas    = document.getElementById("hamCanvas");
 const defCanvas    = document.getElementById("defCanvas");
@@ -132,14 +143,25 @@ function render(){
   const f = frames[current];
 
   frameImg.src = "out/frames/" + f.png;
-  
+  const z1 = f.z[0];
+  const z2 = f.z[1];
+
+  const absorptionAsym =
+    Math.tanh(z1);
+
+  const phaseTwist =
+    Math.tanh(z2);
   stats.innerHTML = `
     frame: ${f.i}<br>
     z1: ${f.z[0].toFixed(3)}<br>
     z2: ${f.z[1].toFixed(3)}<br>
     defects: ${f.defects}<br>
     energy: ${f.energy.toFixed(3)}<br>
-    hamming: ${f.hammingFromPrev}
+    hamming: ${f.hammingFromPrev}<br>
+    <br>
+    <b>Latent → Boundary</b><br>
+    absorption asym: ${absorptionAsym.toFixed(3)}<br>
+    phase twist: ${phaseTwist.toFixed(3)}
   `;
 
   drawLatent();
@@ -216,21 +238,21 @@ function drawLatent(){
   lctx.moveTo(0,H/2);
   lctx.lineTo(W,H/2);
   lctx.stroke();
-
+  function metricValue(f){
+    if(colorMode.value === "defects") return f.defects || 0;
+    if(colorMode.value === "energy") return f.energy || 0;
+    return f.hammingFromPrev || 0;
+  }
   // points
-  const maxHam = Math.max(
-    ...frames.map(f => f.hammingFromPrev || 0),
-    1
-  );
+  const vals = frames.map(metricValue);
+  const maxVal = Math.max(...vals, 1);
 
   frames.forEach((f,i)=>{
 
     const p = project(f.z);
 
-    const ham = f.hammingFromPrev || 0;
-    const t = ham / maxHam;
+    const t = metricValue(f) / maxVal;
 
-    // dark blue -> cyan -> white
     const r = Math.round(80 + t * 175);
     const g = Math.round(120 + t * 135);
     const b = Math.round(180 + t * 75);
@@ -245,7 +267,7 @@ function drawLatent(){
     const radius =
       i === current
         ? 6
-        : 3 + t * 3;
+        : 3 + t * 4;
 
     lctx.arc(p.x,p.y,radius,0,Math.PI*2);
     lctx.fill();

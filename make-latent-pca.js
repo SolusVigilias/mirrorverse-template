@@ -23,6 +23,40 @@ function readPNG(file){
   });
 }
 
+function detectDefects(vec, size){
+
+  let count = 0;
+  let energy = 0;
+
+  for(let y=1;y<size-1;y++){
+
+    for(let x=1;x<size-1;x++){
+
+      const i = y * size + x;
+
+      const dx =
+        vec[i+1] - vec[i-1];
+
+      const dy =
+        vec[i+size] - vec[i-size];
+
+      const g =
+        Math.sqrt(dx*dx + dy*dy);
+
+      energy += g;
+
+      if(g > 0.22){
+        count++;
+      }
+    }
+  }
+
+  return {
+    defects: count,
+    energy
+  };
+}
+
 function downsampleGray(png){
 
   const vec = [];
@@ -58,16 +92,21 @@ async function main(){
   console.log("frames:", files.length);
 
   const X = [];
-
+  const metrics = [];
   for(const f of files){
 
     const png = await readPNG(
       path.join(FRAME_DIR, f)
     );
 
-    X.push(
-      downsampleGray(png)
-    );
+    const feat = downsampleGray(png);
+
+    const diag =
+      detectDefects(feat, SIZE);
+
+    X.push(feat);
+
+    metrics.push(diag);
   }
 
   console.log("running PCA...");
@@ -85,9 +124,9 @@ async function main(){
       z[1]
     ],
 
-    defects: 0,
-
-    energy: 0,
+    defects: metrics[i].defects,
+    
+    energy: metrics[i].energy,
 
     hammingFromPrev:
       i===0
